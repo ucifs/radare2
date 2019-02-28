@@ -983,7 +983,7 @@ repeat:
 			eprintf (" WARNING : block size exceeding max block size at 0x%08"PFMT64x"\n", addr);
 			eprintf ("[+] Try changing it with e anal.bb.maxsize\n");
 		}
-		if (isInvalidMemory (buf + addrbytes * idx, len - addrbytes * idx)) {
+		if (isInvalidMemory (buf, sizeof (buf))) {
 			FITFCNSZ ();
 			VERBOSE_ANAL eprintf ("FFFF opcode at 0x%08"PFMT64x "\n", addr + idx);
 			return R_ANAL_RET_ERROR;
