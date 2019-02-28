@@ -165,6 +165,7 @@ static const char *help_msg_visual[] = {
 	"?", "show visual help menu",
 	"??", "show this help",
 	"???", "show the user-friendly hud",
+	"$", "set the program counter to the current offset + cursor",
 	"%", "in cursor mode finds matching pair, otherwise toggle autoblocksz",
 	"^", "seek to the begining of the function",
 	"!", "enter into the visual panels mode",
@@ -485,6 +486,7 @@ repeat:
 	case 'd':
 		r_strbuf_appendf (p, "Visual Debugger Help:\n\n");
 		r_strbuf_appendf (p,
+			" $   -> change the program counter\n"
 			" s   -> step in\n"
 			" S   -> step over\n"
 			" B   -> toggle breakpoint\n"
@@ -2501,6 +2503,9 @@ R_API int r_core_visual_cmd(RCore *core, const char *arg) {
 			}
 			splitView = !splitView;
 			setcursor (core, splitView);
+			break;
+		case '$':
+			r_core_cmdf (core, "dr PC=$$+%d", core->print->cur);
 			break;
 		case 'c':
 			setcursor (core, !core->print->cur_enabled);

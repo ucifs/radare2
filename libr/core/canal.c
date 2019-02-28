@@ -674,10 +674,9 @@ static int core_anal_fcn(RCore *core, ut64 at, ut64 from, int reftype, int depth
 	}
 	int has_next = r_config_get_i (core->config, "anal.hasnext");
 	RAnalHint *hint = NULL;
-	ut8 *buf = NULL;
 	int i, nexti = 0;
 	ut64 *next = NULL;
-	int buflen, fcnlen;
+	int fcnlen;
 	RAnalFunction *fcn = r_anal_fcn_new ();
 	const char *fcnpfx = r_config_get (core->config, "anal.fcnprefix");
 	if (!fcnpfx) {
@@ -702,12 +701,6 @@ static int core_anal_fcn(RCore *core, ut64 at, ut64 from, int reftype, int depth
 	if (!fcn->name) {
 		fcn->name = r_str_newf ("%s.%08"PFMT64x, fcnpfx, at);
 	}
-	buflen = core->anal->opt.bb_max_size;
-	buf = calloc (1, buflen);
-	if (!buf) {
-		eprintf ("Error: malloc (buf)\n");
-		goto error;
-	}
 	do {
 		RFlagItem *f;
 		int delta = r_anal_fcn_size (fcn);
@@ -718,14 +711,17 @@ static int core_anal_fcn(RCore *core, ut64 at, ut64 from, int reftype, int depth
 			}
 		}
 		// TODO bring back old hack, should be fixed
-		if (!r_io_read_at (core->io, at + delta, buf, 4)) {
-			goto error;
+		{
+			ut8 buf [4];
+			if (!r_io_read_at (core->io, at + delta, buf, 4)) {
+				goto error;
+			}
 		}
-		(void)r_io_read_at (core->io, at + delta, buf, buflen);
+		// (void)r_io_read_at (core->io, at + delta, buf, buflen);
 		if (r_cons_is_breaked ()) {
 			break;
 		}
-		fcnlen = r_anal_fcn (core->anal, fcn, at + delta, buf, buflen, reftype);
+		fcnlen = r_anal_fcn (core->anal, fcn, at + delta, reftype);
 		if (core->anal->opt.searchstringrefs) {
 			r_anal_set_stringrefs (core, fcn);
 		}
@@ -758,7 +754,6 @@ static int core_anal_fcn(RCore *core, ut64 at, ut64 from, int reftype, int depth
 			if (f && *f->name && strncmp (f->name, "sect", 4)) {
 				fcn->name = strdup (f->name);
 			} else {
-
 				fcn->name = r_str_newf ("%s.%08"PFMT64x, fcnpfx, fcn->addr);
 			}
 		}
@@ -848,7 +843,6 @@ static int core_anal_fcn(RCore *core, ut64 at, ut64 from, int reftype, int depth
 			}
 		}
 	} while (fcnlen != R_ANAL_RET_END);
-	R_FREE (buf);
 
 	if (has_next) {
 		for (i = 0; i < nexti; i++) {
@@ -863,7 +857,6 @@ static int core_anal_fcn(RCore *core, ut64 at, ut64 from, int reftype, int depth
 	return true;
 
 error:
-	free (buf);
 	// ugly hack to free fcn
 	if (fcn) {
 		if (!r_anal_fcn_size (fcn) || fcn->addr == UT64_MAX) {
@@ -1491,7 +1484,7 @@ R_API int r_core_anal_bb(RCore *core, RAnalFunction *fcn, ut64 at, int head) {
 	}
 
 	if (ret == R_ANAL_RET_NEW) { /* New bb */
-		// XXX: use static buffer size of 512 or so
+		// XXX: use read_ahead and so on, but dont allocate that much in here
 		buf = malloc (core->anal->opt.bb_max_size);
 		if (!buf) {
 			goto error;
@@ -1511,7 +1504,7 @@ R_API int r_core_anal_bb(RCore *core, RAnalFunction *fcn, ut64 at, int head) {
 				goto error;
 			}
 			buflen = core->anal->opt.bb_max_size;
-			bblen = r_anal_bb (core->anal, bb, at+bblen, buf, buflen, head);
+			bblen = r_anal_bb (core->anal, bb, at + bblen, buf, buflen, head);
 			if (bblen == R_ANAL_RET_ERROR || (bblen == R_ANAL_RET_END && bb->size < 1)) { /* Error analyzing bb */
 				goto error;
 			}
