@@ -884,6 +884,28 @@ static void check_purity(HtUP *ht, RAnal *anal, RAnalFunction *fcn) {
 	r_list_free (refs);
 }
 
+// TODO: move into io :?
+static int read_ahead(RAnal *anal, ut64 addr, ut8 *buf, int len) {
+	static ut8 cache[1024];
+	static ut64 cache_addr = UT64_MAX;
+	static int cache_len = sizeof (cache);
+	bool isCached = (addr >= cache_addr && addr + len < (cache_addr + cache_len));
+	if (len > cache_len) {
+		return anal->iob.read_at (anal->iob.io, addr, buf, len); // double read
+	}
+	if (cache_addr == UT64_MAX || !isCached) {
+		cache_addr = addr;
+		anal->iob.read_at (anal->iob.io, addr, cache, sizeof (cache));
+	//	anal->iob.read_at (anal->iob.io, addr, buf, len); // double read
+	}
+	if (isCached) {
+		memcpy (buf, cache + (addr - cache_addr), len);
+	} else {
+		anal->iob.read_at (anal->iob.io, addr, buf, len); // double read
+	}
+	return len;
+}
+
 static int fcn_recurse(RAnal *anal, RAnalFunction *fcn, ut64 addr, int depth) {
 	const int continue_after_jump = anal->opt.afterjmp;
 	const int noncode = anal->opt.noncode;
@@ -978,10 +1000,16 @@ repeat:
 			break;
 		}
 		ut64 at = addr + (addrbytes * idx);
-		anal->iob.read_at (anal->iob.io, at, buf, sizeof (buf)); // TODO: implement read_ahead
+		// int ret = anal->iob.read_at (anal->iob.io, at, buf, sizeof (buf)); // TODO: implement read_ahead
+		ret = read_ahead (anal, at, buf, sizeof (buf));
+
+//anal->iob.read_at (anal->iob.io, at, buf, sizeof (buf)); // TODO: implement read_ahead
 		if ((addrbytes * idx) > anal->opt.bb_max_size) {
 			eprintf (" WARNING : block size exceeding max block size at 0x%08"PFMT64x"\n", addr);
 			eprintf ("[+] Try changing it with e anal.bb.maxsize\n");
+		}
+		if (ret < 0) {
+			eprintf ("Failed to read\n");
 		}
 		if (isInvalidMemory (buf, sizeof (buf))) {
 			FITFCNSZ ();
@@ -1901,16 +1929,9 @@ R_API bool r_anal_fcn_add_bb(RAnal *anal, RAnalFunction *fcn, ut64 addr, ut64 si
 		if (bb) {
 			r_list_delete_data (fcn->bbs, bb);
 		}
-		ut8 *bbuf = malloc (size);
-		if (!bbuf) {
-			eprintf ("malloc failed\n");
-			return false;
-		}
-		anal->iob.read_at (anal->iob.io, addr, bbuf, size);
 		fcn_recurse (anal, fcn, size, 1);
 		r_anal_fcn_update_tinyrange_bbs (fcn);
 		r_anal_fcn_set_size (anal, fcn, r_anal_fcn_size (fcn));
-		free (bbuf);
 		bb = r_anal_fcn_bbget_at (fcn, addr);
 		if (!bb) {
 			if (fcn->addr == addr) {
